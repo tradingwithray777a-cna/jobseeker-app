@@ -40,12 +40,12 @@ const Navigation = () => {
 function App() {
   return (
     <div className="App min-h-screen bg-slate-50">
-      <BrowserRouter>
+      <BrowserRouter basename="/jobseeker-app">
         <Navigation />
         <Routes>
           <Route path="/" element={<SearchPage />} />
         </Routes>
-      </BrowserRouter>
+      <BrowserRouter basename="/jobseeker-app">
     </div>
   );
 }
