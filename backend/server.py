@@ -1,8 +1,3 @@
-
-FILE 9: backend/server.py (Simplified Version)
-Click "Add file" → "Create new file"
-In the "Name your file" box, type: backend/server.py
-Copy and paste this content:
 from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
