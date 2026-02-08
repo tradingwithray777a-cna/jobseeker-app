@@ -1,0 +1,84 @@
+Now let's create the .gitignore file to protect sensitive information.
+
+Click "Add file" → "Create new file" (top right of your repo)
+In the "Name your file" box, type: .gitignore
+Copy and paste this content:
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+backend/.env
+frontend/.env
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.pytest_cache/
+
+# Build outputs
+build/
+dist/
+frontend/build/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright
+.playwright/
+pw-browsers/
+
+# Misc
+.cache/
+.temp/
+tmp/
