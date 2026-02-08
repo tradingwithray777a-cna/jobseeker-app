@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/jobseeker-app/static/css/main.690e605f.css",
+    "main.css": "/jobseeker-app/static/css/main.806625d5.css",
     "main.js": "/jobseeker-app/static/js/main.89e82077.js",
     "index.html": "/jobseeker-app/index.html",
-    "main.690e605f.css.map": "/jobseeker-app/static/css/main.690e605f.css.map",
+    "main.806625d5.css.map": "/jobseeker-app/static/css/main.806625d5.css.map",
     "main.89e82077.js.map": "/jobseeker-app/static/js/main.89e82077.js.map"
   },
   "entrypoints": [
-    "static/css/main.690e605f.css",
+    "static/css/main.806625d5.css",
     "static/js/main.89e82077.js"
   ]
 }
