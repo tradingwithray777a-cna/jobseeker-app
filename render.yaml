@@ -1,0 +1,20 @@
+This file tells Render.com how to deploy your backend.
+
+Click "Add file" → "Create new file"
+In the "Name your file" box, type: render.yaml
+Copy and paste this content:
+services:
+  - type: web
+    name: jobseeker-backend
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt && playwright install chromium
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: jobseeker_db
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
