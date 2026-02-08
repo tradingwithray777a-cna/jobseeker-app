@@ -45,7 +45,7 @@ function App() {
         <Routes>
           <Route path="/" element={<SearchPage />} />
         </Routes>
-      <BrowserRouter basename="/jobseeker-app">
+      <BrowserRouter>
     </div>
   );
 }
