@@ -1,9 +1,3 @@
-🔧 Fix the deploy.yml File:
-Go to: https://github.com/tradingwithray777a-cna/jobseeker-app
-Navigate to .github → workflows → deploy.yml
-Click the pencil icon (✏️) to edit
-Delete everything in the file
-Copy and paste this corrected version:
 name: Deploy to GitHub Pages
 
 on:
@@ -14,31 +8,25 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v3
       
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: 18
       
-      - name: Install dependencies
-        run: |
-          cd frontend
-          npm install
+      - name: Install
+        run: cd frontend && npm install
       
       - name: Build
-        run: |
-          cd frontend
-          npm run build
+        run: cd frontend && npm run build
         env:
           REACT_APP_BACKEND_URL: https://jobseeker-backend-t2b6.onrender.com
       
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./frontend/build
-          publish_branch: gh-pages
