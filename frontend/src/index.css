@@ -1,8 +1,3 @@
-Commit
-FILE 16: frontend/src/index.css
-Click "Add file" → "Create new file"
-Name: frontend/src/index.css
-Paste this:
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
 @tailwind base;
