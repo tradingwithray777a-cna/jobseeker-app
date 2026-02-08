@@ -1,0 +1,44 @@
+Commit
+FILE 16: frontend/src/index.css
+Click "Add file" → "Create new file"
+Name: frontend/src/index.css
+Paste this:
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Manrope', sans-serif;
+}
+
+@layer base {
+    :root {
+        --background: 0 0% 100%;
+        --foreground: 222 47% 11%;
+        --primary: 258 90% 66%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 43 96% 56%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 258 90% 66%;
+        --radius: 1rem;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
