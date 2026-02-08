@@ -16,6 +16,8 @@ import re
 import asyncio
 from io import BytesIO
 from openpyxl import Workbook
+from playwright.async_api import async_playwright
+from urllib.parse import quote
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -56,26 +58,168 @@ class EmailAlertCreate(BaseModel):
 
 # Helper function
 def extract_ats_keywords(description: str) -> List[str]:
-    keywords = ['python', 'java', 'javascript', 'react', 'node', 'sql', 'mongodb', 
-                'aws', 'docker', 'kubernetes', 'agile', 'scrum', 'api', 'rest']
-    found = [kw for kw in keywords if kw in description.lower()]
+    keywords = ['python', 'java', 'javascript', 'typescript', 'react', 'angular', 'vue', 'node', 
+                'sql', 'mysql', 'postgresql', 'mongodb', 'aws', 'azure', 'gcp', 'docker', 
+                'kubernetes', 'agile', 'scrum', 'api', 'rest', 'testing', 'git', 'html', 'css',
+                'machine learning', 'data science', 'analytics', 'devops', 'ci/cd']
+    found = [kw for kw in keywords if kw.lower() in description.lower()]
     return list(set(found))[:10]
 
-# Simple scraper
-async def scrape_jobs(job_title: str) -> List[Job]:
+# Real Scraper functions
+async def scrape_mycareersfuture(job_title: str) -> List[Job]:
+    """Scrape REAL jobs from MyCareersFuture using Playwright"""
     jobs = []
-    for i in range(100):
-        job = Job(
-            job_title=f"{job_title} - Position {i+1}",
-            employer=f"Company {i+1}",
-            job_description=f"Exciting opportunity for {job_title}. Join our team!",
-            date_posted=(datetime.now(timezone.utc) - timedelta(days=i % 30)).strftime("%Y-%m-%d"),
-            salary_range=f"S${3000 + (i * 100)} - S${6000 + (i * 150)}",
-            employer_website=f"https://company{i+1}.sg",
-            ats_keywords=extract_ats_keywords(job_title),
-            source="MyCareersFuture" if i % 2 == 0 else "JobStreet"
-        )
-        jobs.append(job)
+    try:
+        logger.info(f"Live scraping MyCareersFuture for: {job_title}")
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            
+            await page.set_extra_http_headers({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            
+            search_query = quote(job_title)
+            url = f"https://www.mycareersfuture.gov.sg/search?search={search_query}&sortBy=new_posting_date"
+            
+            try:
+                await page.goto(url, timeout=30000, wait_until="networkidle")
+                await asyncio.sleep(3)
+                
+                job_elements = await page.query_selector_all('div[id^="job-card"]')
+                
+                logger.info(f"Found {len(job_elements)} job elements on MCF")
+                
+                for idx, elem in enumerate(job_elements[:50]):
+                    try:
+                        title_text = ""
+                        company_text = ""
+                        salary_text = "Competitive"
+                        
+                        title_elem = await elem.query_selector('a[data-testid*="job-card-title"], h3, a')
+                        if title_elem:
+                            title_text = (await title_elem.inner_text()).strip()
+                        
+                        company_elem = await elem.query_selector('[data-testid*="company"], .company')
+                        if company_elem:
+                            company_text = (await company_elem.inner_text()).strip()
+                        
+                        salary_elem = await elem.query_selector('[data-testid*="salary"], .salary')
+                        if salary_elem:
+                            salary_text = (await salary_elem.inner_text()).strip()
+                        
+                        link_elem = await elem.query_selector('a[href*="/job/"]')
+                        job_link = ""
+                        if link_elem:
+                            job_link = await link_elem.get_attribute('href')
+                            if job_link and not job_link.startswith('http'):
+                                job_link = f"https://www.mycareersfuture.gov.sg{job_link}"
+                        
+                        if title_text and company_text:
+                            job = Job(
+                                job_title=title_text,
+                                employer=company_text,
+                                job_description=f"Position available at {company_text}. Visit the job page for full details.",
+                                date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                                salary_range=salary_text,
+                                employer_website=job_link or f"https://www.mycareersfuture.gov.sg/search?search={search_query}",
+                                ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
+                                source="MyCareersFuture"
+                            )
+                            jobs.append(job)
+                    except Exception as e:
+                        logger.error(f"Error parsing MCF job card: {str(e)}")
+                        continue
+                
+            except Exception as e:
+                logger.error(f"Error loading MCF page: {str(e)}")
+            
+            await browser.close()
+        
+        logger.info(f"Scraped {len(jobs)} real jobs from MyCareersFuture")
+        
+    except Exception as e:
+        logger.error(f"Error in MCF scraper: {str(e)}")
+    
+    return jobs
+
+async def scrape_jobstreet(job_title: str) -> List[Job]:
+    """Scrape REAL jobs from JobStreet using Playwright"""
+    jobs = []
+    try:
+        logger.info(f"Live scraping JobStreet for: {job_title}")
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            
+            await page.set_extra_http_headers({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            
+            search_query = quote(job_title)
+            url = f"https://www.jobstreet.com.sg/{job_title.replace(' ', '-').lower()}-jobs"
+            
+            try:
+                await page.goto(url, timeout=30000, wait_until="networkidle")
+                await asyncio.sleep(3)
+                
+                job_elements = await page.query_selector_all('article[data-testid="job-card"], div[data-card-type="JobCard"]')
+                
+                logger.info(f"Found {len(job_elements)} job elements on JobStreet")
+                
+                for idx, elem in enumerate(job_elements[:50]):
+                    try:
+                        title_text = ""
+                        company_text = ""
+                        salary_text = "Competitive"
+                        
+                        title_elem = await elem.query_selector('a[data-automation="job-list-item-link-overlay"], h1, h2, a')
+                        if title_elem:
+                            title_text = (await title_elem.inner_text()).strip()
+                        
+                        company_elem = await elem.query_selector('[data-automation="jobCardCompanyName"], .company-name')
+                        if company_elem:
+                            company_text = (await company_elem.inner_text()).strip()
+                        
+                        salary_elem = await elem.query_selector('[data-automation="job-card-salary"], .salary')
+                        if salary_elem:
+                            salary_text = (await salary_elem.inner_text()).strip()
+                        
+                        link_elem = await elem.query_selector('a[href*="/job/"]')
+                        job_link = ""
+                        if link_elem:
+                            job_link = await link_elem.get_attribute('href')
+                            if job_link and not job_link.startswith('http'):
+                                job_link = f"https://www.jobstreet.com.sg{job_link}"
+                        
+                        if title_text and company_text:
+                            job = Job(
+                                job_title=title_text,
+                                employer=company_text,
+                                job_description=f"Opportunity at {company_text}. Click to view full job description.",
+                                date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                                salary_range=salary_text,
+                                employer_website=job_link or f"https://www.jobstreet.com.sg/{job_title.replace(' ', '-').lower()}-jobs",
+                                ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
+                                source="JobStreet"
+                            )
+                            jobs.append(job)
+                    except Exception as e:
+                        logger.error(f"Error parsing JobStreet job card: {str(e)}")
+                        continue
+                
+            except Exception as e:
+                logger.error(f"Error loading JobStreet page: {str(e)}")
+            
+            await browser.close()
+        
+        logger.info(f"Scraped {len(jobs)} real jobs from JobStreet")
+        
+    except Exception as e:
+        logger.error(f"Error in JobStreet scraper: {str(e)}")
+    
     return jobs
 
 # Routes
@@ -88,7 +232,12 @@ async def search_jobs(request: JobSearchRequest):
     logger.info(f"Searching for: {request.job_title}")
     await db.jobs.delete_many({"created_at": {"$lt": datetime.now(timezone.utc) - timedelta(hours=1)}})
     
-    all_jobs = await scrape_jobs(request.job_title)
+    mcf_jobs, js_jobs = await asyncio.gather(
+        scrape_mycareersfuture(request.job_title),
+        scrape_jobstreet(request.job_title)
+    )
+    
+    all_jobs = mcf_jobs + js_jobs
     all_jobs = all_jobs[:200]
     
     if all_jobs:
@@ -210,6 +359,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
