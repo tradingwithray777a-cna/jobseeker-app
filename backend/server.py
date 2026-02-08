@@ -16,7 +16,6 @@ import re
 import asyncio
 from io import BytesIO
 from openpyxl import Workbook
-from playwright.async_api import async_playwright
 from urllib.parse import quote
 
 ROOT_DIR = Path(__file__).parent
@@ -61,83 +60,69 @@ def extract_ats_keywords(description: str) -> List[str]:
     keywords = ['python', 'java', 'javascript', 'typescript', 'react', 'angular', 'vue', 'node', 
                 'sql', 'mysql', 'postgresql', 'mongodb', 'aws', 'azure', 'gcp', 'docker', 
                 'kubernetes', 'agile', 'scrum', 'api', 'rest', 'testing', 'git', 'html', 'css',
-                'machine learning', 'data science', 'analytics', 'devops', 'ci/cd']
+                'machine learning', 'data science', 'analytics', 'devops', 'ci/cd', 'excel',
+                'tableau', 'powerbi', 'salesforce', 'sap', 'marketing', 'sales', 'finance']
     found = [kw for kw in keywords if kw.lower() in description.lower()]
     return list(set(found))[:10]
 
-# Real Scraper functions
+# HTTP-based scrapers (no Playwright needed)
 async def scrape_mycareersfuture(job_title: str) -> List[Job]:
-    """Scrape REAL jobs from MyCareersFuture using Playwright"""
+    """Scrape jobs from MyCareersFuture using HTTP requests"""
     jobs = []
     try:
-        logger.info(f"Live scraping MyCareersFuture for: {job_title}")
+        logger.info(f"HTTP scraping MyCareersFuture for: {job_title}")
         
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
-            await page.set_extra_http_headers({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            
-            search_query = quote(job_title)
-            url = f"https://www.mycareersfuture.gov.sg/search?search={search_query}&sortBy=new_posting_date"
-            
-            try:
-                await page.goto(url, timeout=30000, wait_until="networkidle")
-                await asyncio.sleep(3)
-                
-                job_elements = await page.query_selector_all('div[id^="job-card"]')
-                
-                logger.info(f"Found {len(job_elements)} job elements on MCF")
-                
-                for idx, elem in enumerate(job_elements[:50]):
-                    try:
-                        title_text = ""
-                        company_text = ""
-                        salary_text = "Competitive"
-                        
-                        title_elem = await elem.query_selector('a[data-testid*="job-card-title"], h3, a')
-                        if title_elem:
-                            title_text = (await title_elem.inner_text()).strip()
-                        
-                        company_elem = await elem.query_selector('[data-testid*="company"], .company')
-                        if company_elem:
-                            company_text = (await company_elem.inner_text()).strip()
-                        
-                        salary_elem = await elem.query_selector('[data-testid*="salary"], .salary')
-                        if salary_elem:
-                            salary_text = (await salary_elem.inner_text()).strip()
-                        
-                        link_elem = await elem.query_selector('a[href*="/job/"]')
-                        job_link = ""
-                        if link_elem:
-                            job_link = await link_elem.get_attribute('href')
-                            if job_link and not job_link.startswith('http'):
-                                job_link = f"https://www.mycareersfuture.gov.sg{job_link}"
-                        
-                        if title_text and company_text:
-                            job = Job(
-                                job_title=title_text,
-                                employer=company_text,
-                                job_description=f"Position available at {company_text}. Visit the job page for full details.",
-                                date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                                salary_range=salary_text,
-                                employer_website=job_link or f"https://www.mycareersfuture.gov.sg/search?search={search_query}",
-                                ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
-                                source="MyCareersFuture"
-                            )
-                            jobs.append(job)
-                    except Exception as e:
-                        logger.error(f"Error parsing MCF job card: {str(e)}")
-                        continue
-                
-            except Exception as e:
-                logger.error(f"Error loading MCF page: {str(e)}")
-            
-            await browser.close()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
         
-        logger.info(f"Scraped {len(jobs)} real jobs from MyCareersFuture")
+        search_query = quote(job_title)
+        url = f"https://www.mycareersfuture.gov.sg/search?search={search_query}&sortBy=new_posting_date"
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Look for job cards in the HTML
+            job_cards = soup.find_all('div', {'id': lambda x: x and x.startswith('job-card')})
+            
+            logger.info(f"Found {len(job_cards)} job cards on MCF")
+            
+            for card in job_cards[:50]:
+                try:
+                    title_elem = card.find('a', {'data-testid': lambda x: x and 'job-card-title' in x}) or card.find('h3') or card.find('a')
+                    company_elem = card.find(attrs={'data-testid': lambda x: x and 'company' in x})
+                    salary_elem = card.find(attrs={'data-testid': lambda x: x and 'salary' in x})
+                    link_elem = card.find('a', href=lambda x: x and '/job/' in x)
+                    
+                    title_text = title_elem.get_text(strip=True) if title_elem else ""
+                    company_text = company_elem.get_text(strip=True) if company_elem else ""
+                    salary_text = salary_elem.get_text(strip=True) if salary_elem else "Competitive"
+                    job_link = link_elem['href'] if link_elem else ""
+                    
+                    if title_text and company_text:
+                        if job_link and not job_link.startswith('http'):
+                            job_link = f"https://www.mycareersfuture.gov.sg{job_link}"
+                        
+                        job = Job(
+                            job_title=title_text,
+                            employer=company_text,
+                            job_description=f"Position at {company_text}. Visit job page for details.",
+                            date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                            salary_range=salary_text,
+                            employer_website=job_link or url,
+                            ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
+                            source="MyCareersFuture"
+                        )
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing MCF card: {str(e)}")
+                    continue
+        
+        logger.info(f"Scraped {len(jobs)} jobs from MyCareersFuture")
         
     except Exception as e:
         logger.error(f"Error in MCF scraper: {str(e)}")
@@ -145,77 +130,64 @@ async def scrape_mycareersfuture(job_title: str) -> List[Job]:
     return jobs
 
 async def scrape_jobstreet(job_title: str) -> List[Job]:
-    """Scrape REAL jobs from JobStreet using Playwright"""
+    """Scrape jobs from JobStreet using HTTP requests"""
     jobs = []
     try:
-        logger.info(f"Live scraping JobStreet for: {job_title}")
+        logger.info(f"HTTP scraping JobStreet for: {job_title}")
         
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            
-            await page.set_extra_http_headers({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            
-            search_query = quote(job_title)
-            url = f"https://www.jobstreet.com.sg/{job_title.replace(' ', '-').lower()}-jobs"
-            
-            try:
-                await page.goto(url, timeout=30000, wait_until="networkidle")
-                await asyncio.sleep(3)
-                
-                job_elements = await page.query_selector_all('article[data-testid="job-card"], div[data-card-type="JobCard"]')
-                
-                logger.info(f"Found {len(job_elements)} job elements on JobStreet")
-                
-                for idx, elem in enumerate(job_elements[:50]):
-                    try:
-                        title_text = ""
-                        company_text = ""
-                        salary_text = "Competitive"
-                        
-                        title_elem = await elem.query_selector('a[data-automation="job-list-item-link-overlay"], h1, h2, a')
-                        if title_elem:
-                            title_text = (await title_elem.inner_text()).strip()
-                        
-                        company_elem = await elem.query_selector('[data-automation="jobCardCompanyName"], .company-name')
-                        if company_elem:
-                            company_text = (await company_elem.inner_text()).strip()
-                        
-                        salary_elem = await elem.query_selector('[data-automation="job-card-salary"], .salary')
-                        if salary_elem:
-                            salary_text = (await salary_elem.inner_text()).strip()
-                        
-                        link_elem = await elem.query_selector('a[href*="/job/"]')
-                        job_link = ""
-                        if link_elem:
-                            job_link = await link_elem.get_attribute('href')
-                            if job_link and not job_link.startswith('http'):
-                                job_link = f"https://www.jobstreet.com.sg{job_link}"
-                        
-                        if title_text and company_text:
-                            job = Job(
-                                job_title=title_text,
-                                employer=company_text,
-                                job_description=f"Opportunity at {company_text}. Click to view full job description.",
-                                date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                                salary_range=salary_text,
-                                employer_website=job_link or f"https://www.jobstreet.com.sg/{job_title.replace(' ', '-').lower()}-jobs",
-                                ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
-                                source="JobStreet"
-                            )
-                            jobs.append(job)
-                    except Exception as e:
-                        logger.error(f"Error parsing JobStreet job card: {str(e)}")
-                        continue
-                
-            except Exception as e:
-                logger.error(f"Error loading JobStreet page: {str(e)}")
-            
-            await browser.close()
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
         
-        logger.info(f"Scraped {len(jobs)} real jobs from JobStreet")
+        search_query = job_title.replace(' ', '-').lower()
+        url = f"https://www.jobstreet.com.sg/{search_query}-jobs"
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Look for job cards
+            job_cards = soup.find_all('article', {'data-testid': 'job-card'})
+            if not job_cards:
+                job_cards = soup.find_all('div', {'data-card-type': 'JobCard'})
+            
+            logger.info(f"Found {len(job_cards)} job cards on JobStreet")
+            
+            for card in job_cards[:50]:
+                try:
+                    title_elem = card.find('a', {'data-automation': 'job-list-item-link-overlay'}) or card.find('h1') or card.find('h2') or card.find('a')
+                    company_elem = card.find(attrs={'data-automation': 'jobCardCompanyName'})
+                    salary_elem = card.find(attrs={'data-automation': 'job-card-salary'})
+                    link_elem = card.find('a', href=lambda x: x and '/job/' in x)
+                    
+                    title_text = title_elem.get_text(strip=True) if title_elem else ""
+                    company_text = company_elem.get_text(strip=True) if company_elem else ""
+                    salary_text = salary_elem.get_text(strip=True) if salary_elem else "Competitive"
+                    job_link = link_elem['href'] if link_elem else ""
+                    
+                    if title_text and company_text:
+                        if job_link and not job_link.startswith('http'):
+                            job_link = f"https://www.jobstreet.com.sg{job_link}"
+                        
+                        job = Job(
+                            job_title=title_text,
+                            employer=company_text,
+                            job_description=f"Opportunity at {company_text}. Click to view details.",
+                            date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                            salary_range=salary_text,
+                            employer_website=job_link or url,
+                            ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
+                            source="JobStreet"
+                        )
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing JobStreet card: {str(e)}")
+                    continue
+        
+        logger.info(f"Scraped {len(jobs)} jobs from JobStreet")
         
     except Exception as e:
         logger.error(f"Error in JobStreet scraper: {str(e)}")
@@ -359,10 +331,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
