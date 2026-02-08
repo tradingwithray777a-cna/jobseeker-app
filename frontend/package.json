@@ -1,0 +1,54 @@
+This defines all the frontend dependencies and build scripts.
+
+Click "Add file" → "Create new file"
+In the "Name your file" box, type: frontend/package.json
+Copy and paste this content:
+{
+  "name": "jobseeker-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "homepage": "https://tradingwithray777a-cna.github.io/jobseeker-app",
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.11",
+    "@radix-ui/react-label": "^2.1.4",
+    "@radix-ui/react-select": "^2.2.2",
+    "@radix-ui/react-slot": "^1.2.0",
+    "axios": "^1.8.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.507.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.5.1",
+    "react-scripts": "5.0.1",
+    "sonner": "^2.0.3",
+    "tailwind-merge": "^3.2.0",
+    "tailwindcss-animate": "^1.0.7",
+    "xlsx": "^0.18.5"
+  },
+  "scripts": {
+    "start": "craco start",
+    "build": "craco build",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d build"
+  },
+  "devDependencies": {
+    "@craco/craco": "^7.1.0",
+    "autoprefixer": "^10.4.20",
+    "gh-pages": "^6.1.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
