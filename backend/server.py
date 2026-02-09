@@ -11,12 +11,8 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import requests
-from bs4 import BeautifulSoup
-import re
-import asyncio
 from io import BytesIO
 from openpyxl import Workbook
-from urllib.parse import quote
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -30,6 +26,9 @@ api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Vercel scraper URL
+VERCEL_SCRAPER_URL = "https://jobseeker-app-chi.vercel.app/api/scraper"
 
 # Models
 class Job(BaseModel):
@@ -55,142 +54,40 @@ class EmailAlertCreate(BaseModel):
     email: str
     job_title: str
 
-# Helper function
-def extract_ats_keywords(description: str) -> List[str]:
-    keywords = ['python', 'java', 'javascript', 'typescript', 'react', 'angular', 'vue', 'node', 
-                'sql', 'mysql', 'postgresql', 'mongodb', 'aws', 'azure', 'gcp', 'docker', 
-                'kubernetes', 'agile', 'scrum', 'api', 'rest', 'testing', 'git', 'html', 'css',
-                'machine learning', 'data science', 'analytics', 'devops', 'ci/cd', 'excel',
-                'tableau', 'powerbi', 'salesforce', 'sap', 'marketing', 'sales', 'finance']
-    found = [kw for kw in keywords if kw.lower() in description.lower()]
-    return list(set(found))[:10]
-
-# HTTP-based scrapers (no Playwright needed)
-async def scrape_mycareersfuture(job_title: str) -> List[Job]:
-    """Scrape jobs from MyCareersFuture using HTTP requests"""
+# Vercel scraping service integration
+async def scrape_jobs_from_vercel(job_title: str) -> List[Job]:
+    """Call Vercel scraping service to get real jobs"""
     jobs = []
     try:
-        logger.info(f"HTTP scraping MyCareersFuture for: {job_title}")
+        logger.info(f"Calling Vercel scraper for: {job_title}")
         
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-        }
-        
-        search_query = quote(job_title)
-        url = f"https://www.mycareersfuture.gov.sg/search?search={search_query}&sortBy=new_posting_date"
-        
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.post(
+            VERCEL_SCRAPER_URL,
+            json={"job_title": job_title},
+            timeout=65
+        )
         
         if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
+            data = response.json()
+            logger.info(f"Vercel scraper returned {data.get('count', 0)} jobs")
             
-            # Look for job cards in the HTML
-            job_cards = soup.find_all('div', {'id': lambda x: x and x.startswith('job-card')})
+            for job_data in data.get('jobs', []):
+                job = Job(
+                    job_title=job_data['job_title'],
+                    employer=job_data['employer'],
+                    job_description=job_data['job_description'],
+                    date_posted=job_data['date_posted'],
+                    salary_range=job_data['salary_range'],
+                    employer_website=job_data['employer_website'],
+                    ats_keywords=job_data['ats_keywords'],
+                    source=job_data['source']
+                )
+                jobs.append(job)
+        else:
+            logger.error(f"Vercel scraper returned status {response.status_code}: {response.text}")
             
-            logger.info(f"Found {len(job_cards)} job cards on MCF")
-            
-            for card in job_cards[:50]:
-                try:
-                    title_elem = card.find('a', {'data-testid': lambda x: x and 'job-card-title' in x}) or card.find('h3') or card.find('a')
-                    company_elem = card.find(attrs={'data-testid': lambda x: x and 'company' in x})
-                    salary_elem = card.find(attrs={'data-testid': lambda x: x and 'salary' in x})
-                    link_elem = card.find('a', href=lambda x: x and '/job/' in x)
-                    
-                    title_text = title_elem.get_text(strip=True) if title_elem else ""
-                    company_text = company_elem.get_text(strip=True) if company_elem else ""
-                    salary_text = salary_elem.get_text(strip=True) if salary_elem else "Competitive"
-                    job_link = link_elem['href'] if link_elem else ""
-                    
-                    if title_text and company_text:
-                        if job_link and not job_link.startswith('http'):
-                            job_link = f"https://www.mycareersfuture.gov.sg{job_link}"
-                        
-                        job = Job(
-                            job_title=title_text,
-                            employer=company_text,
-                            job_description=f"Position at {company_text}. Visit job page for details.",
-                            date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                            salary_range=salary_text,
-                            employer_website=job_link or url,
-                            ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
-                            source="MyCareersFuture"
-                        )
-                        jobs.append(job)
-                except Exception as e:
-                    logger.error(f"Error parsing MCF card: {str(e)}")
-                    continue
-        
-        logger.info(f"Scraped {len(jobs)} jobs from MyCareersFuture")
-        
     except Exception as e:
-        logger.error(f"Error in MCF scraper: {str(e)}")
-    
-    return jobs
-
-async def scrape_jobstreet(job_title: str) -> List[Job]:
-    """Scrape jobs from JobStreet using HTTP requests"""
-    jobs = []
-    try:
-        logger.info(f"HTTP scraping JobStreet for: {job_title}")
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-        }
-        
-        search_query = job_title.replace(' ', '-').lower()
-        url = f"https://www.jobstreet.com.sg/{search_query}-jobs"
-        
-        response = requests.get(url, headers=headers, timeout=15)
-        
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Look for job cards
-            job_cards = soup.find_all('article', {'data-testid': 'job-card'})
-            if not job_cards:
-                job_cards = soup.find_all('div', {'data-card-type': 'JobCard'})
-            
-            logger.info(f"Found {len(job_cards)} job cards on JobStreet")
-            
-            for card in job_cards[:50]:
-                try:
-                    title_elem = card.find('a', {'data-automation': 'job-list-item-link-overlay'}) or card.find('h1') or card.find('h2') or card.find('a')
-                    company_elem = card.find(attrs={'data-automation': 'jobCardCompanyName'})
-                    salary_elem = card.find(attrs={'data-automation': 'job-card-salary'})
-                    link_elem = card.find('a', href=lambda x: x and '/job/' in x)
-                    
-                    title_text = title_elem.get_text(strip=True) if title_elem else ""
-                    company_text = company_elem.get_text(strip=True) if company_elem else ""
-                    salary_text = salary_elem.get_text(strip=True) if salary_elem else "Competitive"
-                    job_link = link_elem['href'] if link_elem else ""
-                    
-                    if title_text and company_text:
-                        if job_link and not job_link.startswith('http'):
-                            job_link = f"https://www.jobstreet.com.sg{job_link}"
-                        
-                        job = Job(
-                            job_title=title_text,
-                            employer=company_text,
-                            job_description=f"Opportunity at {company_text}. Click to view details.",
-                            date_posted=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                            salary_range=salary_text,
-                            employer_website=job_link or url,
-                            ats_keywords=extract_ats_keywords(f"{title_text} {company_text}"),
-                            source="JobStreet"
-                        )
-                        jobs.append(job)
-                except Exception as e:
-                    logger.error(f"Error parsing JobStreet card: {str(e)}")
-                    continue
-        
-        logger.info(f"Scraped {len(jobs)} jobs from JobStreet")
-        
-    except Exception as e:
-        logger.error(f"Error in JobStreet scraper: {str(e)}")
+        logger.error(f"Error calling Vercel scraper: {str(e)}")
     
     return jobs
 
@@ -202,14 +99,12 @@ async def root():
 @api_router.post("/jobs/search")
 async def search_jobs(request: JobSearchRequest):
     logger.info(f"Searching for: {request.job_title}")
+    
+    # Clear old jobs
     await db.jobs.delete_many({"created_at": {"$lt": datetime.now(timezone.utc) - timedelta(hours=1)}})
     
-    mcf_jobs, js_jobs = await asyncio.gather(
-        scrape_mycareersfuture(request.job_title),
-        scrape_jobstreet(request.job_title)
-    )
-    
-    all_jobs = mcf_jobs + js_jobs
+    # Use Vercel scraper
+    all_jobs = await scrape_jobs_from_vercel(request.job_title)
     all_jobs = all_jobs[:200]
     
     if all_jobs:
